@@ -39,3 +39,7 @@ for image_name in files:
 
     print(vector_repr.shape)
 
+
+
+
+
