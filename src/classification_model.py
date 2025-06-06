@@ -4,6 +4,7 @@ import torch.optim as optim
 import torch.utils.data as data
 from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms
+from sklearn.metrics import precision_score, recall_score, f1_score
 import matplotlib.pyplot as plt
 
 
@@ -133,6 +134,8 @@ class Trainer:
         self.val_loader = val_loader
         self.criterion = criterion
         self.optimizer = optimizer
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3,
+                                                                    verbose=True)
         self.device = device
         self.save_path = save_path
         self.best_val_acc = 0.0
@@ -141,6 +144,9 @@ class Trainer:
         self.train_accuracies = []
         self.val_losses = []
         self.val_accuracies = []
+        self.val_precisions = []
+        self.val_recalls = []
+        self.val_f1 = []
 
     def train_epoch(self):
         self.model.train()
@@ -171,6 +177,8 @@ class Trainer:
         running_loss = 0.0
         correct = 0
         total = 0
+        all_preds = []
+        all_labels = []
 
         with torch.no_grad():
             for inputs, labels in self.val_loader:
@@ -185,7 +193,10 @@ class Trainer:
 
         epoch_loss = running_loss / total
         epoch_acc = correct / total
-        return epoch_loss, epoch_acc
+        precision = precision_score(all_labels, all_preds, average='macro', zero_devision=0)
+        recall = recall_score(all_labels, all_preds, average='macro', zero_devision=0)
+        f1 = f1_score(all_labels, all_preds, average='macro', zero_devision=0)
+        return epoch_loss, epoch_acc, precision, recall, f1
 
     def save_model(self):
         torch.save(self.model.state_dict(), self.save_path)
@@ -193,9 +204,10 @@ class Trainer:
 
     def plot_metrics(self):
         epochs = range(1, len(self.train_losses) + 1)
-        plt.figure(figsize=(12, 5))
+        plt.figure(figsize=(18, 10))
 
-        plt.subplot(1, 2, 1)
+        # loss
+        plt.subplot(2, 2, 1)
         plt.plot(epochs, self.train_losses, label='Train Loss')
         plt.plot(epochs, self.val_losses, label='Val Loss')
         plt.xlabel('Epoch')
@@ -203,12 +215,23 @@ class Trainer:
         plt.title('Loss Over Epochs')
         plt.legend()
 
-        plt.subplot(1, 2, 2)
+        # accuracy
+        plt.subplot(2, 2, 2)
         plt.plot(epochs, self.train_accuracies, label='Train Accuracy')
         plt.plot(epochs, self.val_accuracies, label='Val Accuracy')
         plt.xlabel('Epoch')
         plt.ylabel('Accuracy')
         plt.title('Accuracy Over Epochs')
+        plt.legend()
+
+        # precision, recall, f1
+        plt.subplot(2, 2, 3)
+        plt.plot(epochs, self.val_precisions, label='Val Precision')
+        plt.plot(epochs, self.val_recalls, label='Val Recall')
+        plt.plot(epochs, self.val_f1, label='Val F1')
+        plt.xlabel('Epoch')
+        plt.ylabel('Score')
+        plt.title('Precision / Recall / F1 Over Epochs')
         plt.legend()
 
         plt.tight_layout()
@@ -217,16 +240,20 @@ class Trainer:
     def fit(self, num_epochs):
         for epoch in range(num_epochs):
             train_loss, train_acc = self.train_epoch()
-            val_loss, val_acc = self.validate()
+            val_loss, val_acc, precision, recall, f1 = self.validate()
 
             self.train_losses.append(train_loss)
             self.train_accuracies.append(train_acc)
             self.val_losses.append(val_loss)
             self.val_accuracies.append(val_acc)
+            self.val_precisions.append(precision)
+            self.val_recalls.append(recall)
+            self.val_f1.append(f1)
 
             print(f"Epoch {epoch+1}/{num_epochs}")
             print(f"Train loss: {train_loss:.4f}, Train acc: {train_acc:.4f}")
             print(f"Val loss: {val_loss:.4f}, Val acc: {val_acc:.4f}\n")
+            print(f"Val Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}\n")
 
             if val_acc > self.best_val_acc:
                 self.best_val_acc = val_acc
@@ -243,7 +270,7 @@ if __name__ == "__main__":
 
     train_loader, val_loader, class_names = get_loaders(data_dir)
 
-    device = torch.device("cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = ResNet18(num_classes=len(class_names))
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
