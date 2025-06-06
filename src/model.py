@@ -13,6 +13,7 @@ import torchvision.transforms.v2 as tfs_v2
 import torch.nn as nn
 import torch.optim as optim
 
+
 class SegmentDataset(data.Dataset):
     def __init__(self, path, transform_img=None, transform_mask=None):
         self.path = path
@@ -94,10 +95,10 @@ class UNetModel(nn.Module):
 
         self.bottleneck = self._TwoConvLayers(512, 1024)
 
-        self.dec_block1 = self._TwoConvLayers(1024, 512)
-        self.dec_block2 = self._TwoConvLayers(512, 256)
-        self.dec_block3 = self._TwoConvLayers(256, 128)
-        self.dec_block4 = self._TwoConvLayers(128, 64)
+        self.dec_block1 = self._DecoderBlock(1024, 512)
+        self.dec_block2 = self._DecoderBlock(512, 256)
+        self.dec_block3 = self._DecoderBlock(256, 128)
+        self.dec_block4 = self._DecoderBlock(128, 64)
 
         self.out = nn.Conv2d(64, num_classes, 1)
 
